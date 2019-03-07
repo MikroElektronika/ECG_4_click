@@ -1,0 +1,189 @@
+{
+Example for ECG_4 Click
+
+    Date          : Dec 2018.
+    Author        : Nemanja Medakovic
+
+Test configuration dsPIC :
+    
+    MCU                : P33FJ256GP710A
+    Dev. Board         : EasyPIC Fusion v7
+    dsPIC Compiler ver : v7.1.0.0
+
+---
+
+Description :
+
+The application is composed of three sections :
+
+- System Initialization - Initializes peripherals and pins.
+- Application Initialization - Initializes UART interface, performs a reset of the device and powers up control of
+  Low Drop Out (LDO).
+- Application Task - (code snippet) - Always checks does response ready and, when is ready, processes a response.
+
+Additional Functions :
+
+- interrupt - Always checks does new data ready for reading from uart rx buffer, and if is it true reads one byte data from uart
+  and makes a response sequence.
+- plotData - Sends a desired data (Raw Data) to the serial plotter.
+- logData - Sends data to the uart terminal and shows results.
+- makeResponse - Pars a response to the buffer.
+- processResponse - Processes a parsed response and makes a decide where response will be showed.
+
+}
+program Click_ECG_4_DSPIC;
+
+uses Click_ECG_4_types, Click_ECG_4_config;
+
+const
+    RX_UART_READY : uint8_t = 1; 
+    
+var
+    response : array[256] of uint8_t; 
+    row_counter : uint8_t; 
+    plot_x : uint32_t; 
+    row_size_cnt : uint8_t; 
+    resp_ready : T_ECG4_RETVAL; 
+    
+procedure plotData(plot_data : int16_t); 
+var
+    plot_string : array[50] of char; 
+begin
+    IntToStr(plot_data, plot_string); 
+    mikrobus_logWrite(plot_string, _LOG_TEXT); 
+    mikrobus_logWrite(',', _LOG_TEXT); 
+    LongWordToStr(plot_x, plot_string); 
+    mikrobus_logWrite(plot_string, _LOG_LINE); 
+    if (plot_x = 0xFFFFFFFF) then 
+    begin
+        plot_x := 0; 
+    end
+    else 
+    begin
+        inc(plot_x);
+    end;
+    Delay_ms(3); 
+end;
+
+procedure logData(code_val : uint8_t; data_val : uint8_t); 
+var
+    log_string : array[20] of char; 
+begin
+    if (code_val = _ECG4_SIGNAL_QUALITY_CODE_BYTE) then 
+    begin
+        mikrobus_logWrite('** Signal Quality (0 - sensor off, 200 - sensor on) : ', _LOG_TEXT); 
+        ByteToStr(data_val, log_string); 
+        mikrobus_logWrite(log_string, _LOG_TEXT); 
+        mikrobus_logWrite(' **', _LOG_LINE); 
+    end
+    else 
+    begin
+        if (code_val = _ECG4_HEART_RATE_CODE_BYTE) then 
+        begin
+            mikrobus_logWrite('** Real-time Heart Rate : ', _LOG_TEXT); 
+            ByteToStr(data_val, log_string); 
+            mikrobus_logWrite(log_string, _LOG_TEXT); 
+            mikrobus_logWrite(' BPM **', _LOG_LINE); 
+        end; 
+    end;
+end;
+
+procedure makeResponse(opCode : ^uint8_t; rowSize : ^uint8_t; rxBuff : ^uint8_t; rowCnt : ^uint8_t); 
+var
+    idx_cnt : uint8_t; 
+begin
+    if (rowCnt^ = 0) then 
+    begin
+        row_size_cnt := 0; 
+    end; 
+    response[row_size_cnt] := opCode^; 
+    response[row_size_cnt + 1] := rowSize^; 
+    idx_cnt := 0;
+    while (idx_cnt < rowSize^) do 
+    begin
+        response[(row_size_cnt + 2) + idx_cnt] := rxBuff^; 
+        inc(idx_cnt);
+		inc(rxBuff);
+    end;
+    row_size_cnt := row_size_cnt + (rowSize^ + 2); 
+    row_counter := rowCnt^; 
+end;
+
+procedure processResponse(); 
+var
+    cnt : uint8_t; 
+    idx_cnt : uint8_t; 
+    raw_data : int16_t; 
+begin
+    idx_cnt := 0; 
+    cnt := 0;
+    while (cnt <= row_counter) do 
+    begin
+        if (response[idx_cnt] = _ECG4_RAW_DATA_CODE_BYTE) then 
+        begin
+            raw_data := response[idx_cnt + 2]; 
+            raw_data := raw_data shl 8; 
+            raw_data := raw_data or response[idx_cnt + 3]; 
+            plotData(raw_data); 
+        end; 
+        {if ((response[idx_cnt] = _ECG4_SIGNAL_QUALITY_CODE_BYTE) or (response[idx_cnt] = _ECG4_HEART_RATE_CODE_BYTE)) then 
+        begin
+            logData(response[idx_cnt], response[idx_cnt + 2]); 
+        end;} 
+        idx_cnt := idx_cnt + (response[idx_cnt + 1] + 2); 
+        inc(cnt);
+    end;
+end;
+
+procedure systemInit(); 
+begin
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT); 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_CS_PIN, _GPIO_OUTPUT); 
+    mikrobus_uartInit(_MIKROBUS1, @_ECG4_UART_CFG[0]); 
+    mikrobus_logInit(_LOG_USBUART_B, 57600); 
+    mikrobus_logWrite('*** Initializing... ***', _LOG_LINE); 
+    Delay_ms(100); 
+end;
+
+procedure applicationInit(); 
+begin
+    ecg4_uartDriverInit(T_ECG4_P(@_MIKROBUS1_GPIO), T_ECG4_P(@_MIKROBUS1_UART)); 
+    ecg4_response_handler_set(@makeResponse); 
+    Delay_ms(300); 
+    ecg4_reset(); 
+    ecg4_enable_LDO_ctrl(_ECG4_ENABLE_LDO_CTRL); 
+    Delay_ms(200); 
+    plot_x := 0; 
+    U2RXIF_bit := 0; 
+    U2RXIE_bit := 1; 
+    mikrobus_logWrite('** ECG 4 is initialized **', _LOG_LINE); 
+    mikrobus_logWrite('', _LOG_LINE); 
+end;
+
+procedure applicationTask(); 
+begin
+    resp_ready := ecg4_responseReady(); 
+    if (resp_ready = _ECG4_RESPONSE_READY) then 
+    begin
+        processResponse(); 
+    end; 
+end;
+
+procedure UART_RX(); iv IVT_ADDR_U2RXINTERRUPT; 
+begin
+    if (U2RXIF_bit = RX_UART_READY) then 
+    begin
+        ecg4_uart_isr(); 
+        U2RXIF_bit := 0; 
+    end; 
+end;
+
+begin
+
+    systemInit(); 
+    applicationInit(); 
+    while (1) do 
+    begin 
+        applicationTask(); 
+    end;
+end.

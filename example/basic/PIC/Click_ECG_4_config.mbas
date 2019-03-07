@@ -1,0 +1,7 @@
+module Click_ECG_4_config
+
+include Click_ECG_4_types
+const
+    _ECG4_UART_CFG as uint32_t[1] = (57600)
+    
+end.

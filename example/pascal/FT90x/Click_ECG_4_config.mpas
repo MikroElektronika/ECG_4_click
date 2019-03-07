@@ -1,0 +1,8 @@
+unit Click_ECG_4_config;
+
+uses Click_ECG_4_types;
+
+const
+    _ECG4_UART_CFG : array[1] of uint32_t = (57600); 
+    
+end.

@@ -1,0 +1,78 @@
+[DEVICE]
+Name=P18F87K22
+Clock=64000000
+[BUILD_TYPE]
+Value=0
+
+[MEMORY_MODEL]
+Value=0
+[ACTIVE_TAB]
+Value=Click_ECG_4_PIC.c
+[USE_EEPROM]
+Value=0
+[USE_HEAP]
+Value=0
+[HEAP_SIZE]
+Value=2000
+[EEPROM_DEFINITION]
+Value=
+[FILES]
+File0=Click_ECG_4_PIC.c
+File1=..\..\..\library\__ecg4_Driver.c
+Count=2
+[BINARIES]
+Count=0
+[IMAGES]
+Count=0
+ActiveImageIndex=-1
+[OPENED_FILES]
+File0=Click_ECG_4_PIC.c
+File1=Click_ECG_4_types.h
+File2=Click_ECG_4_config.h
+File3=..\..\..\library\__ecg4_driver.h
+File4=..\..\..\library\__ecg4_Driver.c
+Count=5
+[EEPROM]
+Count=0
+[ACTIVE_COMMENTS_FILES]
+Count=0
+[OTHER_FILES]
+Count=0
+[SEARCH_PATH]
+Path0=..\..\..\library\HAL\
+Path1=..\..\..\library\
+Path2=C:\Users\nemanja.medakovic\Documents\Mikroelektronika\mikroC PRO for PIC\Packages\mikroBUS Board Definition API\Uses\
+Count=3
+[HEADER_PATH]
+Path0=..\..\..\library\
+Path1=..\..\..\library\HAL\
+Path2=C:\Users\nemanja.medakovic\Documents\Mikroelektronika\mikroC PRO for PIC\Packages\mikroBUS Board Definition API\Uses\
+Count=3
+[HEADERS]
+File0=..\..\..\library\__ecg4_driver.h
+File1=Click_ECG_4_config.h
+File2=Click_ECG_4_types.h
+Count=3
+[PLDS]
+File0=Click_ECG_4.pld
+Count=1
+[Useses]
+File0=easypicpro_v7_P18F87K22
+File1=Conversions
+File2=C_String
+File3=UART
+File4=Sound
+Count=5
+[EXPANDED_NODES]
+0=Click_ECG_4_PIC.mcppi
+1=Sources
+4=Header Files
+9=Project Level Defines
+Count=4
+[LIB_EXPANDED_NODES]
+0=mikroE Libraries
+1=System Libraries
+417=Sound
+891=mikroSDK Libraries
+892=mikroBUS Board Definition API
+Count=5

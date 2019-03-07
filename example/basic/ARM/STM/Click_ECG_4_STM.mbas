@@ -1,0 +1,177 @@
+'
+'Example for ECG_4 Click
+'
+'    Date          : Dec 2018.
+'    Author        : Nemanja Medakovic
+'
+'Test configuration STM32 :
+'    
+'    MCU              : STM32F107VCT6
+'    Dev. Board       : EasyMx PRO v7 for STM32
+'    ARM Compiler ver : v6.0.0.0
+'
+'---
+'
+'Description :
+'
+'The application is composed of three sections :
+'
+'- System Initialization - Initializes peripherals and pins.
+'- Application Initialization - Initializes UART interface, performs a reset of the device and powers up control of
+'  Low Drop Out (LDO).
+'- Application Task - (code snippet) - Always checks does response ready and, when is ready, processes a response.
+'Note : The Sound library is used to play sound on buzzer every time when R interval on the ECG signal happened.
+'The Sound Play command can make a delay time which is necessary for play command to be performed.
+'If you don't need to make sound on buzzer, please disable the Sound Init and Sound Play functions.
+'
+'Additional Functions :
+'
+'- interrupt - Always checks does new data ready for reading from uart rx buffer, and if is it true reads one byte data from uart
+'  and makes a response sequence.
+'- plotData - Sends a desired data (Raw Data) to the serial plotter.
+'- logData - Sends data to the uart terminal and shows results.
+'- makeResponse - Pars a response to the buffer.
+'- processResponse - Processes a parsed response and makes a decide where response will be showed.
+'
+'
+program Click_ECG_4_STM
+
+include Click_ECG_4_types
+include Click_ECG_4_config
+const
+    RX_UART_READY as uint8_t = 1
+    
+dim
+    response as uint8_t[256] 
+    row_counter as uint8_t 
+    plot_x as uint32_t 
+    row_size_cnt as uint8_t 
+    resp_ready as T_ECG4_RETVAL 
+    
+sub procedure plotData(dim plot_data as int16_t) 
+dim
+    plot_string as char[50] 
+
+    IntToStr(plot_data, plot_string) 
+    mikrobus_logWrite(plot_string, _LOG_TEXT) 
+    mikrobus_logWrite(",", _LOG_TEXT) 
+    LongWordToStr(plot_x, plot_string) 
+    mikrobus_logWrite(plot_string, _LOG_LINE) 
+    if (plot_data > 4000) then 
+        Sound_Play(520, 25) 
+    end if
+    if (plot_x = 0xFFFFFFFF) then 
+        plot_x = 0 
+    else 
+        inc(plot_x)
+    end if
+    Delay_ms(3) 
+end sub
+
+sub procedure logData(dim code_val as uint8_t, dim data_val as uint8_t) 
+dim
+    log_string as char[20] 
+
+    if (code_val = _ECG4_SIGNAL_QUALITY_CODE_BYTE) then 
+        mikrobus_logWrite("** Signal Quality (0 - sensor off, 200 - sensor on) : ", _LOG_TEXT) 
+        ByteToStr(data_val, log_string) 
+        mikrobus_logWrite(log_string, _LOG_TEXT) 
+        mikrobus_logWrite(" **", _LOG_LINE) 
+    else 
+        if (code_val = _ECG4_HEART_RATE_CODE_BYTE) then 
+            mikrobus_logWrite("** Real-time Heart Rate : ", _LOG_TEXT) 
+            ByteToStr(data_val, log_string) 
+            mikrobus_logWrite(log_string, _LOG_TEXT) 
+            mikrobus_logWrite(" BPM **", _LOG_LINE) 
+        end if
+    end if
+end sub
+
+sub procedure makeResponse(dim opCode as ^uint8_t, dim rowSize as ^uint8_t, dim rxBuff as ^uint8_t, dim rowCnt as ^uint8_t) 
+dim
+    idx_cnt as uint8_t 
+
+    if (rowCnt^ = 0) then 
+        row_size_cnt = 0 
+    end if
+    response[row_size_cnt] = opCode^ 
+    response[row_size_cnt + 1] = rowSize^ 
+    idx_cnt = 0
+    while (idx_cnt < rowSize^) 
+        response[(row_size_cnt + 2) + idx_cnt] = rxBuff^ 
+        inc(idx_cnt)
+		inc(rxBuff)
+    wend
+    row_size_cnt = row_size_cnt + (rowSize^ + 2) 
+    row_counter = rowCnt^ 
+end sub
+
+sub procedure processResponse() 
+dim
+    cnt as uint8_t 
+    idx_cnt as uint8_t 
+    raw_data as int16_t 
+
+    idx_cnt = 0 
+    cnt = 0
+    while (cnt <= row_counter) 
+        if (response[idx_cnt] = _ECG4_RAW_DATA_CODE_BYTE) then 
+            raw_data = response[idx_cnt + 2] 
+            raw_data = raw_data << 8 
+            raw_data = raw_data or response[idx_cnt + 3] 
+            plotData(raw_data) 
+        end if
+        'if ((response[idx_cnt] = _ECG4_SIGNAL_QUALITY_CODE_BYTE) or (response[idx_cnt] = _ECG4_HEART_RATE_CODE_BYTE)) then 
+        '    logData(response[idx_cnt], response[idx_cnt + 2]) 
+        'end if
+        idx_cnt = idx_cnt + (response[idx_cnt + 1] + 2) 
+        inc(cnt)
+    wend
+end sub
+
+sub procedure systemInit() 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_RST_PIN, _GPIO_OUTPUT) 
+    mikrobus_gpioInit(_MIKROBUS1, _MIKROBUS_CS_PIN, _GPIO_OUTPUT) 
+    mikrobus_uartInit(_MIKROBUS1, @_ECG4_UART_CFG[0]) 
+    mikrobus_logInit(_LOG_USBUART_A, 57600) 
+    mikrobus_logWrite("*** Initializing... ***", _LOG_LINE) 
+    Delay_ms(100) 
+end sub
+
+sub procedure applicationInit() 
+    ecg4_uartDriverInit(T_ECG4_P(@_MIKROBUS1_GPIO), T_ECG4_P(@_MIKROBUS1_UART)) 
+    ecg4_response_handler_set(@makeResponse) 
+    Delay_ms(300) 
+    ecg4_reset() 
+    ecg4_enable_LDO_ctrl(_ECG4_ENABLE_LDO_CTRL) 
+    Sound_Init(GPIOE_ODR, 14) 
+    Delay_ms(200) 
+    plot_x = 0 
+    RXNEIE_USART3_CR1_bit = 1 
+    NVIC_IntEnable(IVT_INT_USART3) 
+    EnableInterrupts() 
+    mikrobus_logWrite("** ECG 4 is initialized **", _LOG_LINE) 
+    mikrobus_logWrite("", _LOG_LINE) 
+end sub
+
+sub procedure applicationTask() 
+    resp_ready = ecg4_responseReady() 
+    if (resp_ready = _ECG4_RESPONSE_READY) then 
+        processResponse() 
+    end if
+end sub
+
+sub procedure RX_ISR() iv IVT_INT_USART3 ics ICS_AUTO
+    if (RXNE_USART3_SR_bit = RX_UART_READY) then 
+        ecg4_uart_isr() 
+    end if
+end sub
+
+main :
+
+    systemInit() 
+    applicationInit() 
+    while (1) 
+        applicationTask() 
+    wend
+end.
